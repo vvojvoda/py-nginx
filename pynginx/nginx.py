@@ -36,15 +36,15 @@ class NginxManager(object):
 
 class Server(object):
 
-    def __init__(self, port, server_names, **kwargs):
+    def __init__(self, port, server_names, params):
         super(Server, self).__init__()
         self.port = port
         self.server_names = server_names
         self.locations = []
-        self.params = kwargs
+        self.params = params
 
     def add_location(self, location):
-        self.locations = location
+        self.locations.append(location)
 
     def __str__(self):
         rows = ['server{', 'listen %s;' % self.port]
