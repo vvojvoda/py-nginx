@@ -4,6 +4,52 @@ import tokenize
 
 __author__ = 'vedran'
 
+from pyparsing import Word, Literal, alphanums, printables, OneOrMore, Optional, restOfLine, ZeroOrMore, Group, NotAny
+from pyparsing import LineStart, Dict, Combine
+
+
+class Parser(object):
+    server = Literal('server').suppress()
+    location = Literal('location')
+    semi = Literal(';').suppress()
+    lbrace = Literal('{').suppress()
+    rbrace = Literal('}').suppress()
+    taraba = Literal('#')
+
+    config_line = NotAny(rbrace) + Word(alphanums + '_') + Group(OneOrMore(Word(alphanums + '-' + '_' + '.' + '/' +
+                                                                                '$' + ':'))) + semi
+    location_def = location + Word(alphanums + '/' + '.') + lbrace + Group(OneOrMore(Group(config_line))) + rbrace
+    server_def = server + lbrace + OneOrMore(Group(location_def) | Group(config_line)) + rbrace
+
+    comment = taraba + Optional(restOfLine)
+    server_def.ignore(comment)
+
+    def parse(self, input_):
+        parsed = self.server_def.parseString(input_)
+        server_ = {}
+        locations = []
+        for part in parsed:
+            k = part[0]
+            if k.lower() == 'location':
+                location_ = {'location': part[1]}
+                locations.append(location_)
+                for part2 in part[2]:
+                    k2 = part2[0]
+                    v2 = ' '.join(part2[1])
+                    location_[k2] = v2
+            else:
+                v = ' '.join(part[1])
+                server_[k] = v
+
+        server = Server(port=int(server_.pop('listen')),
+                        server_names=server_.pop('server_name').split(' '),
+                        params=server_)
+        for location_ in locations:
+            location = Location(location=location_.pop('location'), params=location_)
+            server.add_location(location)
+
+        return server
+
 
 class Server(object):
     def __init__(self, port, server_names, params):
@@ -53,7 +99,7 @@ class NginxManager(object):
             raise NginxConfigurationException('Nginx configuration root does not contain a \'sites-available\' '
                                               'or \'sites-enabled\' directory')
 
-        self.configuration = self._load()
+        #self.configuration = self._load()
 
         self.nginx_binary_path = None
         self._find_nginx_exec()

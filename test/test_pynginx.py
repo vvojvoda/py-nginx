@@ -1,5 +1,5 @@
 import unittest
-from pynginx.nginx import NginxManager, Server, Location, NginxConfigurationException
+from pynginx.nginx import NginxManager, Server, Location, NginxConfigurationException, Parser
 import os.path
 from _pytest.monkeypatch import monkeypatch as mp
 import subprocess
@@ -61,3 +61,11 @@ class NginxConfigurationTest(unittest.TestCase):
         self.assertIn('proxy_redirect off;', location_str)
         self.assertIn('location /media{', location_str)
 
+    def test_parser(self):
+        with open('/Users/vedran/razvoj/python/usites/py-nginx/test/server_test.txt') as f:
+            parser = Parser()
+            print('*************')
+            conf = f.read()
+            print(conf, '->', parser.parse(conf))
+            print('*************')
+            self.fail()
