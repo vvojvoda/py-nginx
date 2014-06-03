@@ -44,7 +44,6 @@ setup(
     packages=['pynginx'],
     include_package_data=True,
     platforms='any',
-    #TODO Test suite
     test_suite='test.test_pynginx',
     classifiers = [
         'Programming Language :: Python',
