@@ -119,17 +119,21 @@ class NginxManager(object):
 
         configuration = {}
         for file in available_files:
-            enabled = os.path.join(self.sites_available, file) in enabled_link_realpaths
-            with open(os.path.join(self.sites_available, file)) as f:
+            file_path = os.path.join(self.sites_available, file)
+            enabled = file_path in enabled_link_realpaths
+            with open(file_path) as f:
                 server = self.parser.parse(f.read())
-                configuration[file] = {'enabled': enabled, 'server': server}
+                configuration[file] = {'enabled': enabled, 'server': server,
+                                       'conf_file': file_path}
 
         enabled_files = self._list_sites_enabled_files()
 
         for file in enabled_files:
+            file_path = os.path.join(self.sites_enabled, file)
             enabled = True
-            with open(os.path.join(self.sites_enabled, file)) as f:
-                configuration[file] = {'enabled': enabled, 'server': self.parser.parse(f.read())}
+            with open(file_path) as f:
+                configuration[file] = {'enabled': enabled, 'server': self.parser.parse(f.read()),
+                                       'conf_file': file_path}
 
         self.configuration = configuration
 
