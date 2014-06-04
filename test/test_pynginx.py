@@ -97,3 +97,6 @@ class NginxConfigurationTest(unittest.TestCase):
         monkeypatch.setattr(man, '_list_sites_enabled_link_realpaths', mockreturn_realpaths)
         man.load()
         self.assertEqual(True, man.configuration['server']['enabled'])
+
+        self.assertEqual(2, len(man.configuration.keys()))
+        self.assertEqual(True, man.configuration['server2']['enabled'])

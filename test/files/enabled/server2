@@ -1,0 +1,49 @@
+server {
+    server_name example.com;
+    listen   80;
+    client_max_body_size 20M;
+    # no security problem here, since / is alway passed to upstream
+    root /opt/example;
+    # serve directly - analogous for static/staticfiles
+
+    location /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+        alias /opt/example/robots.txt;
+    }
+
+    location /admin/media/ {
+        # this changes depending on your python version
+        root /opt/example/python2.7/site-packages/django/contrib;
+    }
+
+    location /static/ {
+        root /opt/example/;
+    }
+
+    location /pub/ {
+        alias /opt/example/static/;
+    }
+
+    location /media/ {
+        root /opt/example/;
+        # if asset versioning is used
+        #if ($query_string) {
+        #    expires max;
+        #}
+    }
+
+    location / {
+        proxy_pass_header Server;
+        proxy_set_header Host $http_host;
+        proxy_redirect off;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Scheme $scheme;
+        proxy_connect_timeout 300;
+        proxy_read_timeout 300;
+        proxy_pass http://localhost:8002/;
+    }
+    # what to serve if upstream is not available or crashes
+    error_page 500 502 503 504 /media/500.html;
+}
