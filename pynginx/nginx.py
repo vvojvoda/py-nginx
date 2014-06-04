@@ -8,18 +8,21 @@ from pyparsing import Word, Literal, alphanums, OneOrMore, Optional, restOfLine,
 
 
 class ServerParser(object):
-    word = Word(alphanums + '-' + '_' + '.' + '/' + '$' + ':')
-    server = Literal('server').suppress()
-    location = Literal('location')
-    lbrace = Literal('{').suppress()
-    rbrace = Literal('}').suppress()
+    def __init__(self):
+        super(ServerParser, self).__init__()
 
-    config_line = NotAny(rbrace) + word + Group(OneOrMore(word)) + Literal(';').suppress()
-    location_def = location + word + lbrace + Group(OneOrMore(Group(config_line))) + rbrace
-    server_def = server + lbrace + OneOrMore(Group(location_def) | Group(config_line)) + rbrace
+        word = Word(alphanums + '-' + '_' + '.' + '/' + '$' + ':')
+        server = Literal('server').suppress()
+        location = Literal('location')
+        lbrace = Literal('{').suppress()
+        rbrace = Literal('}').suppress()
 
-    comment = Literal('#') + Optional(restOfLine)
-    server_def.ignore(comment)
+        config_line = NotAny(rbrace) + word + Group(OneOrMore(word)) + Literal(';').suppress()
+        location_def = location + word + lbrace + Group(OneOrMore(Group(config_line))) + rbrace
+        self.server_def = server + lbrace + OneOrMore(Group(location_def) | Group(config_line)) + rbrace
+
+        comment = Literal('#') + Optional(restOfLine)
+        self.server_def.ignore(comment)
 
     def parse(self, input_):
         parsed = self.server_def.parseString(input_)
@@ -28,7 +31,7 @@ class ServerParser(object):
         for part in parsed:
             k = part[0]
             if k.lower() == 'location':
-                locations.append(self.build_location_dict(part))
+                locations.append(self._build_location_dict(part))
             else:
                 v = ' '.join(part[1])
                 server_[k] = v
@@ -43,7 +46,7 @@ class ServerParser(object):
 
         return server
 
-    def build_location_dict(self, parsed_location):
+    def _build_location_dict(self, parsed_location):
         location = {'location': parsed_location[1]}
         for part in parsed_location[2]:
             k = part[0]
