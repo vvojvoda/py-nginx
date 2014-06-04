@@ -4,24 +4,21 @@ import tokenize
 
 __author__ = 'vedran'
 
-from pyparsing import Word, Literal, alphanums, printables, OneOrMore, Optional, restOfLine, ZeroOrMore, Group, NotAny
-from pyparsing import LineStart, Dict, Combine
+from pyparsing import Word, Literal, alphanums, OneOrMore, Optional, restOfLine, Group, NotAny
 
 
-class Parser(object):
+class ServerParser(object):
+    word = Word(alphanums + '-' + '_' + '.' + '/' + '$' + ':')
     server = Literal('server').suppress()
     location = Literal('location')
-    semi = Literal(';').suppress()
     lbrace = Literal('{').suppress()
     rbrace = Literal('}').suppress()
-    taraba = Literal('#')
 
-    config_line = NotAny(rbrace) + Word(alphanums + '_') + Group(OneOrMore(Word(alphanums + '-' + '_' + '.' + '/' +
-                                                                                '$' + ':'))) + semi
-    location_def = location + Word(alphanums + '/' + '.') + lbrace + Group(OneOrMore(Group(config_line))) + rbrace
+    config_line = NotAny(rbrace) + word + Group(OneOrMore(word)) + Literal(';').suppress()
+    location_def = location + word + lbrace + Group(OneOrMore(Group(config_line))) + rbrace
     server_def = server + lbrace + OneOrMore(Group(location_def) | Group(config_line)) + rbrace
 
-    comment = taraba + Optional(restOfLine)
+    comment = Literal('#') + Optional(restOfLine)
     server_def.ignore(comment)
 
     def parse(self, input_):
@@ -31,12 +28,7 @@ class Parser(object):
         for part in parsed:
             k = part[0]
             if k.lower() == 'location':
-                location_ = {'location': part[1]}
-                locations.append(location_)
-                for part2 in part[2]:
-                    k2 = part2[0]
-                    v2 = ' '.join(part2[1])
-                    location_[k2] = v2
+                locations.append(self.build_location_dict(part))
             else:
                 v = ' '.join(part[1])
                 server_[k] = v
@@ -44,11 +36,20 @@ class Parser(object):
         server = Server(port=int(server_.pop('listen')),
                         server_names=server_.pop('server_name').split(' '),
                         params=server_)
+
         for location_ in locations:
             location = Location(location=location_.pop('location'), params=location_)
             server.add_location(location)
 
         return server
+
+    def build_location_dict(self, parsed_location):
+        location = {'location': parsed_location[1]}
+        for part in parsed_location[2]:
+            k = part[0]
+            v = ' '.join(part[1])
+            location[k] = v
+        return location
 
 
 class Server(object):
@@ -78,10 +79,6 @@ class Server(object):
         rows.append('}')
         return '\n'.join(rows)
 
-    @staticmethod
-    def parse(conf):
-        raise NotImplemented()
-
 
 class NginxManager(object):
     def __init__(self, base_conf_location):
@@ -94,48 +91,44 @@ class NginxManager(object):
             raise NginxConfigurationException('%s is not a valid nginx configuration root. nginx.conf file was not '
                                               'found at the specified location' % self.conf_path)
 
-        if not os.path.exists(os.path.join(self.conf_path, 'sites-available')) or \
-                not os.path.exists(os.path.join(self.conf_path, 'sites-enabled')):
+        self.sites_available = os.path.join(self.conf_path, 'sites-available')
+        self.sites_enabled = os.path.join(self.conf_path, 'sites-enabled')
+
+        if not os.path.exists(self.sites_available) or not os.path.exists(self.sites_enabled):
             raise NginxConfigurationException('Nginx configuration root does not contain a \'sites-available\' '
                                               'or \'sites-enabled\' directory')
 
-        #self.configuration = self._load()
+        self.configuration = None
 
         self.nginx_binary_path = None
         self._find_nginx_exec()
+        self.parser = ServerParser()
 
-    def _load(self):
+    def load(self):
         """
         Loads all configuration files contained within {{conf_path}}/sites-available directory.
 
-        :return: a dictionary where keys are the names of the files and values are server dictionaries in format:
-        {"enabled": true/false, "server": Server}
+        File are loaded into a dictionary where keys are the names of the files and values are server dictionaries in
+        format: {"enabled": true/false, "server": Server}
         """
-        sites_available = os.path.join(self.conf_path, 'sites-available')
-        available_files = [f for f in os.listdir(sites_available) if os.path.isfile(os.path.join(sites_available, f))]
-
-        sites_enabled = os.path.join(self.conf_path, 'sites-enabled')
-
-        enabled_link_realpaths = [os.path.realpath(sites_enabled, f) for f in os.listdir(sites_enabled)
-                                  if os.path.islink(os.path.join(sites_enabled, f))]
+        available_files = self._list_sites_available()
+        enabled_link_realpaths = self._list_sites_enabled_link_realpaths()
 
         configuration = {}
         for file in available_files:
-            enabled = os.path.join(sites_available, file) in enabled_link_realpaths
-            with open(file) as f:
-                server = Server.parse(f)
+            enabled = os.path.join(self.sites_available, file) in enabled_link_realpaths
+            with open(os.path.join(self.sites_available, file)) as f:
+                server = self.parser.parse(f.read())
                 configuration[file] = {'enabled': enabled, 'server': server}
 
-        enabled_files = [f for f in os.listdir(sites_enabled)
-                         if os.path.isfile(os.path.join(sites_enabled, f))
-                         and not os.path.islink(os.path.join(sites_enabled, f))]
+        enabled_files = self._list_sites_enabled_files()
 
         for file in enabled_files:
             enabled = True
-            with open(file) as f:
-                configuration[file] = {'enabled': enabled, 'server': Server.parse(f)}
+            with open(os.path.join(self.sites_enabled, file)) as f:
+                configuration[file] = {'enabled': enabled, 'server': self.parser.parse(f.read())}
 
-        return configuration
+        self.configuration = configuration
 
     def _find_nginx_exec(self):
         try:
@@ -143,6 +136,18 @@ class NginxManager(object):
             self.nginx_binary_path = output.rstrip()
         except subprocess.CalledProcessError:
             pass
+
+    def _list_sites_available(self):
+        return [f for f in os.listdir(self.sites_available) if os.path.isfile(os.path.join(self.sites_available, f))]
+
+    def _list_sites_enabled_link_realpaths(self):
+        return [os.path.realpath(self.sites_enabled, f) for f in os.listdir(self.sites_enabled)
+                if os.path.islink(os.path.join(self.sites_enabled, f))]
+
+    def _list_sites_enabled_files(self):
+        return [f for f in os.listdir(self.sites_enabled)
+                if os.path.isfile(os.path.join(self.sites_enabled, f))
+                and not os.path.islink(os.path.join(self.sites_enabled, f))]
 
     def add_server(self, virtual_host):
         pass
