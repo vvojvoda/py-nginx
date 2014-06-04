@@ -1,10 +1,8 @@
 import os
 import subprocess
-import tokenize
+from pyparsing import Word, Literal, alphanums, OneOrMore, Optional, restOfLine, Group, NotAny
 
 __author__ = 'vedran'
-
-from pyparsing import Word, Literal, alphanums, OneOrMore, Optional, restOfLine, Group, NotAny
 
 
 class ServerParser(object):
