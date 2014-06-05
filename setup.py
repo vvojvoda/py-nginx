@@ -3,6 +3,8 @@ from setuptools.command.test import test as TestCommand
 import pynginx
 import io
 import sys
+from pip.req import parse_requirements
+import os
 
 __author__ = 'vedran'
 
@@ -30,6 +32,9 @@ def read(*filenames, **kwargs):
 
 long_description = read('README.md')
 
+install_reqs = parse_requirements(os.path.join(os.path.dirname(__file__), 'requirements.txt'))
+reqs = [str(ir.req) for ir in install_reqs]
+
 setup(
     name='py-nginx',
     version=pynginx.__version__,
@@ -45,6 +50,7 @@ setup(
     include_package_data=True,
     platforms='any',
     test_suite='test.test_pynginx',
+    install_requires=reqs,
     classifiers = [
         'Programming Language :: Python',
         'Development Status :: 4 - Beta',
