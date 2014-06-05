@@ -119,21 +119,75 @@ class NginxManager(object):
         for file in available_files:
             file_path = os.path.join(self.sites_available, file)
             enabled = file_path in enabled_link_realpaths
-            with open(file_path) as f:
-                server = self.parser.parse(f.read())
-                configuration[file] = {'enabled': enabled, 'server': server,
-                                       'conf_file': file_path}
+            configuration[file] = self._read_config_file(file_path, enabled)
 
         enabled_files = self._list_sites_enabled_files()
 
         for file in enabled_files:
             file_path = os.path.join(self.sites_enabled, file)
             enabled = True
-            with open(file_path) as f:
-                configuration[file] = {'enabled': enabled, 'server': self.parser.parse(f.read()),
-                                       'conf_file': file_path}
+            configuration[file] = self._read_config_file(file_path, enabled)
 
         self.configuration = configuration
+
+    def get_server_by_name(self, name):
+        sites_enabled_path = os.path.join(self.sites_enabled, name)
+        sites_available_path = os.path.join(self.sites_available, name)
+
+        if self.configuration and name in self.configuration.keys():
+            return self.configuration[name]
+        elif os.path.exists(sites_available_path):
+            enabled = sites_available_path in self._list_sites_enabled_link_realpaths()
+            return self._read_config_file(sites_available_path, enabled=enabled)
+        elif os.path.exists(sites_enabled_path) and \
+                not os.path.islink(sites_enabled_path):
+            return self._read_config_file(sites_enabled_path, enabled=True)
+        else:
+            raise NginxConfigurationException('Configuration file \'%s\' not found in sites-available or '
+                                              'sites-enabled' % name)
+
+    def save_server(self, server, name):
+        file_path = os.path.join(self.sites_available, name)
+        try:
+            existing_server = self.get_server_by_name(name)
+            enabled = existing_server['enabled']
+        except NginxConfigurationException:
+            enabled = False
+
+        with open(file_path, 'w') as f:
+            f.write(str(server))
+            server_conf = {'enabled': enabled, 'server': server, 'conf_file': file_path}
+            if self.configuration:
+                self.configuration[name] = server_conf
+            return server_conf
+
+    def enable_server(self, name):
+        server = self.get_server_by_name(name)
+        if not server['enabled']:
+            os.symlink(server['conf_file'], os.path.join(self.sites_enabled, name))
+            server['enabled'] = True
+
+    def disable_server(self, name):
+        server = self.get_server_by_name(name)
+        if server['enabled']:
+            sites_enabled_link = os.path.join(self.sites_enabled, name)
+            if not os.path.islink(sites_enabled_link):
+                raise NginxConfigurationException('Server configuration file %s is not a link. In order to disable '
+                                                  'server configuration in a file, the configuration should be placed'
+                                                  ' inside the sites-available directory, with link being placed in '
+                                                  'sites-enabled')
+            os.unlink(sites_enabled_link)
+            server['enabled'] = False
+        else:
+            raise NginxConfigurationException('Server is already disabled')
+
+    def reload(self):
+        return subprocess.call([self.nginx_binary_path, "-s", 'reload'])
+
+    def _read_config_file(self, file_path, enabled):
+        with open(file_path) as f:
+            return {'enabled': enabled, 'server': self.parser.parse(f.read()),
+                    'conf_file': file_path}
 
     def _find_nginx_exec(self):
         try:
@@ -153,9 +207,6 @@ class NginxManager(object):
         return [f for f in os.listdir(self.sites_enabled)
                 if os.path.isfile(os.path.join(self.sites_enabled, f))
                 and not os.path.islink(os.path.join(self.sites_enabled, f))]
-
-    def add_server(self, virtual_host):
-        pass
 
 
 class Location(object):

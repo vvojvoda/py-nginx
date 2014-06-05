@@ -8,32 +8,39 @@ import subprocess
 class NginxConfigurationTest(unittest.TestCase):
     test_files_dir = os.path.join(os.path.dirname(__file__), 'files')
 
-    def _make_manager_init_pass(self, monkeypatch):
+    def setUp(self):
+        self.monkeypatch = mp()
+
+    def tearDown(self):
+        self.monkeypatch.undo()
+
+    def _mock_sites_directories(self, manager):
+        self.monkeypatch.setattr(manager, 'sites_available', os.path.join(self.test_files_dir, 'available'))
+        self.monkeypatch.setattr(manager, 'sites_enabled', os.path.join(self.test_files_dir, 'enabled'))
+
+    def _make_manager_init_pass(self):
         def mockreturn_nginx_path(path):
             return True
 
         def mockreturn_nginx_binary(subprocess):
-            return '/usr/sbin/nginx'
+            return '/argh/mrmr/giberish'
 
-        monkeypatch.setattr(os.path, 'exists', mockreturn_nginx_path)
-        monkeypatch.setattr(subprocess, 'check_output', mockreturn_nginx_binary)
+        self.monkeypatch.setattr(os.path, 'exists', mockreturn_nginx_path)
+        self.monkeypatch.setattr(subprocess, 'check_output', mockreturn_nginx_binary)
 
     def test_fail_if_no_configuration_file(self):
         def mockreturn_nginx_path(path):
             return False
 
-        monkeypatch = mp()
-        monkeypatch.setattr(os.path, 'exists', mockreturn_nginx_path)
+        self.monkeypatch.setattr(os.path, 'exists', mockreturn_nginx_path)
 
         self.assertRaises(NginxConfigurationException, NginxManager, base_conf_location='/etc/nginx/')
 
     def test_config_file_exists(self):
-        monkeypatch = mp()
-        self._make_manager_init_pass(monkeypatch)
+        self._make_manager_init_pass()
 
         man = NginxManager('/etc/nginx/')
         self.assertEqual('/etc/nginx/', man.conf_path)
-        self.assertEqual('/usr/sbin/nginx', man.nginx_binary_path)
 
     def test_server_to_string(self):
         server = Server(port=1231, server_names=['example.com', 'example.net'],
@@ -77,24 +84,78 @@ class NginxConfigurationTest(unittest.TestCase):
             self.assertIn('allow', location.params)
             self.assertIn('/opt/example/robots.txt', location.params.get('alias'))
 
+    def test_get_server_by_name(self):
+        self._make_manager_init_pass()
+        man = NginxManager('/etc/nginx')
+
+        #Revert the monkeypatch making os.path.exists always return True
+        self.monkeypatch.undo()
+        self._mock_sites_directories(man)
+
+        server = man.get_server_by_name(name='server')
+        self.assertFalse(server['enabled'])
+
+        server = man.get_server_by_name(name='server2')
+        self.assertTrue(server['enabled'])
+
+        self.assertRaises(NginxConfigurationException, man.get_server_by_name, name='nonexists')
+
+        man.load()
+        server = man.get_server_by_name(name='server')
+        self.assertFalse(server['enabled'])
+        self.assertEqual(80, server['server'].port)
+
+    def test_save_enable_disable_server(self):
+
+        def mockreturn_realpaths():
+            return [os.path.join(self.test_files_dir, 'available', 'new_server')]
+
+        try:
+            server = Server(port=80, server_names=['example2.com'], params={'root': '/opt/example2/'})
+            self._make_manager_init_pass()
+            man = NginxManager('/etc/nginx')
+            self.monkeypatch.undo()
+            self._mock_sites_directories(man)
+            man.save_server(server, 'new_server')
+
+            new_file_path = os.path.join(man.sites_available, 'new_server')
+            new_file_link_path = os.path.join(man.sites_enabled, 'new_server')
+            self.assertTrue(os.path.exists(new_file_path))
+
+            #make the parser pass on this new file
+            parser = ServerParser()
+            with open(new_file_path) as f:
+                parser.parse(f.read())
+
+            self.assertFalse(os.path.exists(new_file_link_path))
+            man.enable_server('new_server')
+            self.assertTrue(os.path.exists(new_file_link_path))
+            self.assertTrue(os.path.islink(new_file_link_path))
+            self.monkeypatch.setattr(man, '_list_sites_enabled_link_realpaths', mockreturn_realpaths)
+            man.disable_server('new_server')
+            self.assertFalse(os.path.exists(new_file_link_path))
+
+        finally:
+            if os.path.exists(new_file_link_path):
+                os.unlink(new_file_link_path)
+            if os.path.exists(new_file_path):
+                os.remove(new_file_path)
+
     def test_load_configuration(self):
 
         def mockreturn_realpaths():
             return [os.path.join(self.test_files_dir, 'available', 'server')]
 
-        monkeypatch = mp()
-        self._make_manager_init_pass(monkeypatch)
+        self._make_manager_init_pass()
         man = NginxManager('/etc/nginx/')
 
-        monkeypatch.setattr(man, 'sites_available', os.path.join(self.test_files_dir, 'available'))
-        monkeypatch.setattr(man, 'sites_enabled', os.path.join(self.test_files_dir, 'enabled'))
-
+        self._mock_sites_directories(man)
         man.load()
         self.assertIsNotNone(man.configuration)
         self.assertEqual(False, man.configuration['server']['enabled'])
         self.assertEqual(80, man.configuration['server']['server'].port)
 
-        monkeypatch.setattr(man, '_list_sites_enabled_link_realpaths', mockreturn_realpaths)
+        self.monkeypatch.setattr(man, '_list_sites_enabled_link_realpaths', mockreturn_realpaths)
         man.load()
         self.assertEqual(True, man.configuration['server']['enabled'])
 
