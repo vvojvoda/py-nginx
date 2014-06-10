@@ -200,7 +200,7 @@ class NginxManager(object):
         return [f for f in os.listdir(self.sites_available) if os.path.isfile(os.path.join(self.sites_available, f))]
 
     def _list_sites_enabled_link_realpaths(self):
-        return [os.path.realpath(self.sites_enabled, f) for f in os.listdir(self.sites_enabled)
+        return [os.path.realpath(os.path.join(self.sites_enabled, f)) for f in os.listdir(self.sites_enabled)
                 if os.path.islink(os.path.join(self.sites_enabled, f))]
 
     def _list_sites_enabled_files(self):
