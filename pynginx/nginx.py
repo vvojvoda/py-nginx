@@ -182,7 +182,7 @@ class NginxManager(object):
             raise NginxConfigurationException('Server is already disabled')
 
     def reload(self):
-        return subprocess.call([self.nginx_binary_path, "-s", 'reload'])
+        return subprocess.call([self.nginx_binary_path, '-s', 'reload'])
 
     def _read_config_file(self, file_path, enabled):
         with open(file_path) as f:
